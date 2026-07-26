@@ -1,0 +1,18 @@
+# Virtual environment
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Personal data - don't commit your own notes/todos/PINs/screenshots
+data/memory.db
+data/screenshots/*
+data/music/*
+!data/screenshots/.gitkeep
+!data/music/.gitkeep
+
+# IDE
+.idea/
+.vscode/

@@ -1,0 +1,16 @@
+SpeechRecognition
+pyaudio
+pyttsx3
+wikipedia
+scikit-learn
+psutil
+pyautogui
+pyperclip
+word2number
+vaderSentiment
+
+# Optional: enables true meaning-based memory recall instead of
+# keyword matching. Everything works fine without it (falls back
+# automatically) -- only install if you want the upgrade.
+# First run downloads a small (~80MB) model, then it's fully offline.
+# sentence-transformers
