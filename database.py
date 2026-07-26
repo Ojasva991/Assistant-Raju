@@ -91,6 +91,15 @@ class MemoryManager:
                     PRIMARY KEY (user_id, key)
                 )
             """)
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL DEFAULT 0,
+                    query TEXT NOT NULL,
+                    intent TEXT,
+                    timestamp TEXT NOT NULL
+                )
+            """)
 
     # ---------------- USERS / PROFILES ----------------
     def add_user(self, name, pin):
@@ -225,3 +234,19 @@ class MemoryManager:
                 "SELECT value FROM prefs WHERE user_id = ? AND key = ?", (user_id, key)
             ).fetchone()
             return row["value"] if row else None
+
+    # ---------------- COMMAND HISTORY ----------------
+    def log_history(self, query, intent=None, user_id=GUEST_ID):
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO history (user_id, query, intent, timestamp) VALUES (?, ?, ?, ?)",
+                (user_id, query, intent, datetime.datetime.now().isoformat()),
+            )
+
+    def get_history(self, user_id=GUEST_ID, limit=100):
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM history WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+                (user_id, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]

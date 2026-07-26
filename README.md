@@ -29,6 +29,12 @@ sentiment, fuzzy matching, semantic search) runs locally.
   reminders, and latest note
 - **Sentiment-aware responses** — recognizes frustrated phrasing
   (via VADER, a lexicon-based scorer) and responds more gently
+- **System tray icon** — closing the GUI window minimizes to the
+  tray instead of quitting, so Raju keeps running (and keeps
+  listening, if continuous mode is on) in the background
+- **Command history** — every command is logged with a timestamp;
+  say "show my history" for a spoken summary, or "export my history"
+  for a CSV file you can open in Excel
 - **Safety** — learned voice commands can only resolve to a
   pre-approved app whitelist, with a spoken yes/no confirmation
   before running anything
@@ -63,7 +69,8 @@ J_assistant/
 │   ├── user_profile.py                 # profile registration + fuzzy PIN login
 │   ├── semantic_memory.py               # topic-relevant note search
 │   ├── briefing.py                       # daily briefing summary
-│   └── sentiment.py                       # VADER-based sentiment detection
+│   ├── sentiment.py                       # VADER-based sentiment detection
+│   └── history.py                          # command history log + CSV export
 └── data/                       # created automatically at runtime
     ├── memory.db                # SQLite database
     ├── music/                    # drop mp3/wav files here for "play music"
@@ -107,6 +114,8 @@ raju take a screenshot
 raju who is albert einstein
 raju create a profile / log in / who am i / log out
 raju good morning              → daily briefing
+raju show my command history
+raju export my history         → saves a CSV to data/
 ```
 
 ## Notes for your machine

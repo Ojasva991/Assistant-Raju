@@ -8,6 +8,8 @@ pyautogui
 pyperclip
 word2number
 vaderSentiment
+pystray
+Pillow
 
 # Optional: enables true meaning-based memory recall instead of
 # keyword matching. Everything works fine without it (falls back

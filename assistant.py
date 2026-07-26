@@ -26,6 +26,7 @@ from features.user_profile import UserProfileFeature
 from features.semantic_memory import SemanticMemory
 from features.briefing import BriefingFeature
 from features.sentiment import SentimentFeature
+from features.history import HistoryFeature
 from database import GUEST_ID
 
 GREETINGS = [
@@ -64,6 +65,7 @@ class J:
         self.semantic_memory = SemanticMemory(self.memory)
         self.briefing = BriefingFeature(self.memory, self.voice)
         self.sentiment = SentimentFeature()
+        self.history = HistoryFeature(self.memory, self.voice)
 
         # No profile logged in by default -- memory uses the shared
         # "guest" bucket until someone logs in or creates a profile.
@@ -117,6 +119,17 @@ class J:
         self.last_sentiment = self.sentiment.analyze(query)
         if self.last_sentiment["label"] == "negative":
             self.voice.speak(random.choice(FRUSTRATED_ACKNOWLEDGMENTS))
+
+        # Log every command for the history feature. Uses the classifier's
+        # best guess purely as a label for the log -- it doesn't affect
+        # dispatch below, so this stays accurate even for commands that
+        # get handled by an earlier exact/fuzzy match instead of the ML
+        # classifier (e.g. "open notepad").
+        try:
+            history_intent, _ = self.ai.predict(query)
+        except Exception:
+            history_intent = None
+        self.memory.log_history(query, intent=history_intent, user_id=self.current_user_id)
 
         # 0. Direct-match for common phrases that must always work,
         # regardless of ML classifier confidence dilution.
@@ -276,6 +289,12 @@ class J:
             else:
                 self.voice.speak("You're using the guest profile. Say 'log in' or "
                                   "'create a profile' to use your own.")
+
+        elif intent == "show_history":
+            self.history.show_recent(user_id=self.current_user_id)
+
+        elif intent == "export_history":
+            self.history.export(user_id=self.current_user_id)
 
         elif intent == "exit":
             self.voice.speak("Thank you. Goodbye")

@@ -131,6 +131,16 @@ TRAINING_DATA = {
         "whose profile is this", "what is my name", "tell me who i am",
         "am i using a profile", "check my login status",
     ],
+    "show_history": [
+        "show my command history", "what have i asked you",
+        "show my history", "what have i said today", "recent commands",
+        "show what i've asked", "list my recent commands",
+    ],
+    "export_history": [
+        "export my history", "export my command history",
+        "save my history to a file", "download my history",
+        "export history to a file", "create a history export",
+    ],
 }
 
 

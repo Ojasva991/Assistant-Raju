@@ -153,3 +153,47 @@ iteratively, not a versioned release).
 
 - System tray icon
 - Command history export
+
+## What changed from v2.6 → v2.7
+
+- **System tray icon**: closing the GUI window (the X button) now
+  minimizes to the system tray instead of quitting, using `pystray` +
+  `Pillow` (the icon itself is drawn in code — a green circle with
+  Raju's initial — no image file needed). Right-click the tray icon
+  for "Show Raju" / "Quit". Continuous listening keeps running while
+  minimized, since Tkinter's event loop and background threads are
+  unaffected by `root.withdraw()`.
+  Note: `pystray`'s event loop runs on its own thread (a platform
+  requirement, not a choice), so its menu callbacks route through
+  `root.after(0, ...)` to safely reach Tkinter — the exact same
+  thread-safety pattern used for the speech/listen background thread.
+- **Bugfix**: the GUI's "Listening..." status text still said
+  `hey j` from before the Raju rename — now pulls from
+  `config.WAKE_WORD` dynamically so it can't go stale again.
+
+## Files added in this round
+
+(none — tray icon logic lives in `gui.py`)
+
+## What changed from v2.7 → v2.8
+
+- **Command history**: every command is now logged to a new `history`
+  table (query, detected intent, timestamp), scoped per user profile.
+  Say "show my command history" for a spoken summary of the last 5,
+  or "export my history" to save a full CSV (timestamp, query,
+  intent) to `data/` — openable in Excel/Sheets. Logging happens via
+  a lightweight independent classifier call so it captures the
+  ML model's actual guess even for commands handled by an earlier
+  exact/fuzzy match (e.g. "open notepad" still logs its ML-predicted
+  intent even though the app-launcher path handled it directly).
+
+## Files added in this round
+
+- `features/history.py` — history viewing + CSV export
+
+---
+
+This completes every feature from our original planning list:
+GUI, wake word, fuzzy matching, user profiles, semantic memory,
+daily briefing, sentiment-aware responses, system tray icon, and
+command history export.

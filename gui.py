@@ -1,6 +1,6 @@
 """
 gui.py
-A simple Tkinter front-end for J, so you're not stuck staring at a
+A simple Tkinter front-end for Raju, so you're not stuck staring at a
 black terminal window during demos.
 
 Run:
@@ -14,18 +14,28 @@ Features:
       each command
     - Scrolling transcript log of the whole conversation
     - Status line: Idle / Listening / Thinking / Speaking
+    - System tray icon: closing the window minimizes to the tray
+      instead of quitting, so Raju keeps running (and keeps listening,
+      if continuous mode is on) in the background. Right-click the
+      tray icon for Show / Quit.
 
 Threading note: speech recognition and TTS both block, so every
 listen/execute cycle runs in a background thread. The background
 thread never touches Tkinter widgets directly — it only pushes
 messages onto a queue, and the GUI polls that queue on the main
 thread. This is the standard safe pattern for Tkinter + threads.
+The tray icon's own event loop is ALSO a separate thread (pystray
+requirement), so its menu callbacks use root.after(0, ...) to safely
+hand control back to the main thread too — same pattern, same reason.
 """
 
 import queue
 import threading
 import tkinter as tk
 from tkinter import scrolledtext, ttk
+
+import pystray
+from PIL import Image, ImageDraw
 
 from assistant import J
 import config
@@ -50,7 +60,58 @@ class JGui:
 
         self._log(config.ASSISTANT_NAME, f'Hello, I am {config.ASSISTANT_NAME}. Click the mic and say '
                    f'"{config.WAKE_WORD}" before your command, or type below.')
+
+        self.tray_icon = None
+        self.root.protocol("WM_DELETE_WINDOW", self._on_window_close)
+        self._start_tray_icon()
+
         self._poll_queue()
+
+    # ---------------- SYSTEM TRAY ----------------
+    def _build_tray_image(self):
+        """Draws a simple round icon with the assistant's initial —
+        no image file needed, generated entirely in code."""
+        size = 64
+        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        draw.ellipse((2, 2, size - 2, size - 2), fill=(38, 162, 105, 255))
+        initial = config.ASSISTANT_NAME[0].upper()
+        # Rough centering for a single character without needing a
+        # specific font file (uses Pillow's built-in default font).
+        draw.text((size / 2 - 6, size / 2 - 10), initial, fill=(255, 255, 255, 255))
+        return img
+
+    def _start_tray_icon(self):
+        image = self._build_tray_image()
+        menu = pystray.Menu(
+            pystray.MenuItem(f"Show {config.ASSISTANT_NAME}", self._tray_show, default=True),
+            pystray.MenuItem("Quit", self._tray_quit),
+        )
+        self.tray_icon = pystray.Icon(config.ASSISTANT_NAME.lower(), image,
+                                       f"{config.ASSISTANT_NAME} Assistant", menu)
+        # pystray's .run() blocks and needs its own thread; the window
+        # manager / tray on some platforms also requires it NOT be the
+        # main thread when Tkinter also has a mainloop running.
+        thread = threading.Thread(target=self.tray_icon.run, daemon=True)
+        thread.start()
+
+    def _on_window_close(self):
+        """Closing the window (the X button) minimizes to tray instead
+        of quitting, so Raju keeps running -- and keeps listening, if
+        continuous mode is on -- in the background."""
+        self._log("System", "Minimized to tray. Right-click the tray icon to reopen or quit.")
+        self.root.withdraw()
+
+    def _tray_show(self, icon=None, item=None):
+        # Called from pystray's own thread -- must hand off to the
+        # Tkinter main thread via root.after(), same rule as the
+        # speech/listen background threads use.
+        self.root.after(0, self.root.deiconify)
+
+    def _tray_quit(self, icon=None, item=None):
+        if self.tray_icon:
+            self.tray_icon.stop()
+        self.root.after(0, self.root.destroy)
 
     # ---------------- UI LAYOUT ----------------
     def _build_widgets(self):
@@ -139,7 +200,7 @@ class JGui:
         thread.start()
 
     def _listen_and_execute(self):
-        self.msg_queue.put(("status", 'Listening for "hey j"...'))
+        self.msg_queue.put(("status", f'Listening for "{config.WAKE_WORD}"...'))
         query = self.assistant.listen_for_command()
         if query:
             self.msg_queue.put(("user_said", query))
