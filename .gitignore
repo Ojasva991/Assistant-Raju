@@ -16,3 +16,7 @@ data/music/*
 # IDE
 .idea/
 .vscode/
+.pytest_cache/
+data/*.log
+data/*.csv
+data/screenshots/*.png
