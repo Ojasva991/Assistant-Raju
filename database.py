@@ -4,13 +4,14 @@ Local SQLite database — no external server, no API. Single file
 (data/memory.db) that Python's built-in sqlite3 module reads/writes.
 
 Tables:
-    users      -> profiles: name + spoken PIN, so multiple people can
-                  use the same J installation with separate memory
-    notes      -> free-form things the user asked J to remember
+    users      -> profiles: name + salted PIN hash, so multiple people can
+                  share one installation with separate memory
+    notes      -> free-form things the user asked Raju to remember
     commands   -> learned voice-command -> shell-command mappings (shared)
     todos      -> to-do list items (per user)
     reminders  -> time-based reminders (shared checker, tagged by user)
-    prefs      -> simple key/value preferences (per user)
+    prefs      -> simple key/value preferences (user_id 0 = app settings)
+    history    -> every command with intent and confidence (per user)
 
 user_id = 0 means "guest" / no profile logged in — this keeps things
 working exactly as before for anyone who doesn't care about profiles.
@@ -47,10 +48,15 @@ class MemoryManager:
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
-                    pin TEXT NOT NULL,
+                    pin TEXT NOT NULL DEFAULT '',
+                    pin_hash TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL
                 )
             """)
+            # Older databases have no pin_hash column yet: add it.
+            columns = [row["name"] for row in c.execute("PRAGMA table_info(users)")]
+            if "pin_hash" not in columns:
+                c.execute("ALTER TABLE users ADD COLUMN pin_hash TEXT NOT NULL DEFAULT ''")
             c.execute("""
                 CREATE TABLE IF NOT EXISTS notes (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,18 +103,41 @@ class MemoryManager:
                     user_id INTEGER NOT NULL DEFAULT 0,
                     query TEXT NOT NULL,
                     intent TEXT,
-                    timestamp TEXT NOT NULL
+                    timestamp TEXT NOT NULL,
+                    confidence REAL
                 )
             """)
+            # Databases from before Day 5 have no confidence column: add it.
+            hist_cols = [row["name"] for row in c.execute("PRAGMA table_info(history)")]
+            if "confidence" not in hist_cols:
+                c.execute("ALTER TABLE history ADD COLUMN confidence REAL")
 
     # ---------------- USERS / PROFILES ----------------
-    def add_user(self, name, pin):
+    def add_user(self, name, pin_hash):
+        """Stores a new profile. Only the HASH of the PIN is saved; the old
+        plain-text `pin` column stays empty."""
         with self._connect() as conn:
             cur = conn.execute(
-                "INSERT INTO users (name, pin, created_at) VALUES (?, ?, ?)",
-                (name, pin, datetime.datetime.now().isoformat()),
+                "INSERT INTO users (name, pin, pin_hash, created_at) VALUES (?, '', ?, ?)",
+                (name, pin_hash, datetime.datetime.now().isoformat()),
             )
             return cur.lastrowid
+
+    def get_users_with_plain_pin(self):
+        """Profiles from an older version that still have a plain-text PIN."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, pin FROM users WHERE pin != '' AND pin_hash = ''"
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def set_pin_hash(self, user_id, pin_hash):
+        """Saves the hash and blanks the old plain-text column."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE users SET pin_hash = ?, pin = '' WHERE id = ?",
+                (pin_hash, user_id),
+            )
 
     def get_all_users(self):
         with self._connect() as conn:
@@ -182,9 +211,19 @@ class MemoryManager:
                 ).fetchall()
             return [dict(r) for r in rows]
 
-    def complete_todo(self, task_id):
+    def complete_todo(self, task_id, user_id=None):
+        """Marks a task done. Pass user_id so one profile cannot touch another's tasks."""
         with self._connect() as conn:
-            conn.execute("UPDATE todos SET done = 1 WHERE id = ?", (task_id,))
+            if user_id is None:
+                conn.execute("UPDATE todos SET done = 1 WHERE id = ?", (task_id,))
+            else:
+                conn.execute("UPDATE todos SET done = 1 WHERE id = ? AND user_id = ?",
+                             (task_id, user_id))
+
+    def delete_todo(self, task_id, user_id=GUEST_ID):
+        """Removes a task for good (only if it belongs to this user)."""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM todos WHERE id = ? AND user_id = ?", (task_id, user_id))
 
     # ---------------- REMINDERS ----------------
     def add_reminder(self, task, remind_at_iso, user_id=GUEST_ID):
@@ -194,10 +233,11 @@ class MemoryManager:
                 (user_id, task, remind_at_iso),
             )
 
-    def get_due_reminders(self):
+    def get_due_reminders(self, now_iso=None):
         """Checks across ALL users — the background checker runs once for
-        the whole app, regardless of who's currently logged in."""
-        now = datetime.datetime.now().isoformat()
+        the whole app, regardless of who's currently logged in.
+        now_iso lets tests pass a fixed time."""
+        now = now_iso or datetime.datetime.now().isoformat()
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM reminders WHERE remind_at <= ? AND done = 0", (now,)
@@ -215,6 +255,22 @@ class MemoryManager:
                 (user_id, f"{today_prefix}%"),
             ).fetchall()
             return [dict(r) for r in rows]
+
+    def get_reminders(self, user_id=GUEST_ID):
+        """Every reminder of this user (pending and done), soonest first.
+        Used by the Reminders page."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM reminders WHERE user_id = ? ORDER BY remind_at, id",
+                (user_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def delete_reminder(self, reminder_id, user_id=GUEST_ID):
+        """Removes a reminder (only if it belongs to this user)."""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM reminders WHERE id = ? AND user_id = ?",
+                         (reminder_id, user_id))
 
     def mark_reminder_done(self, reminder_id):
         with self._connect() as conn:
@@ -236,12 +292,19 @@ class MemoryManager:
             return row["value"] if row else None
 
     # ---------------- COMMAND HISTORY ----------------
-    def log_history(self, query, intent=None, user_id=GUEST_ID):
+    def log_history(self, query, intent=None, user_id=GUEST_ID, confidence=None):
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO history (user_id, query, intent, timestamp) VALUES (?, ?, ?, ?)",
-                (user_id, query, intent, datetime.datetime.now().isoformat()),
+                "INSERT INTO history (user_id, query, intent, timestamp, confidence) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (user_id, query, intent, datetime.datetime.now().isoformat(), confidence),
             )
+
+    def clear_history(self, user_id=GUEST_ID):
+        """Deletes this user's history only. Returns how many rows were removed."""
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM history WHERE user_id = ?", (user_id,))
+            return cur.rowcount
 
     def get_history(self, user_id=GUEST_ID, limit=100):
         with self._connect() as conn:

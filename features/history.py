@@ -13,6 +13,8 @@ import os
 
 import config
 
+SPOKEN_ITEMS = 3   # how many commands "show my history" reads aloud
+
 
 class HistoryFeature:
     def __init__(self, memory, voice):
@@ -26,26 +28,37 @@ class HistoryFeature:
             return
 
         self.voice.speak(f"Here are your last {len(entries)} commands.")
-        for e in entries:
-            time_str = e["timestamp"][11:16]  # HH:MM
-            print(f"  [{time_str}] {e['query']}  (intent: {e['intent']})")
-        self.voice.speak("Check the screen for the full list.")
+        # Read the first few aloud, newest first; the rest is on the History page.
+        for e in entries[:SPOKEN_ITEMS]:
+            self.voice.speak(e["query"] + ".")
+        if len(entries) > SPOKEN_ITEMS:
+            self.voice.speak("The full list is on the History page.")
 
-    def export(self, user_id=0):
+    def write_csv(self, user_id=0):
+        """Writes the full history to a CSV file in the data folder (oldest first).
+        Returns (path, number_of_rows), or (None, 0) when there is nothing to write.
+        No speech here, so the History page can use it too."""
         entries = self.memory.get_history(user_id=user_id, limit=100000)
         if not entries:
-            self.voice.speak("There's no history to export yet.")
-            return None
+            return None, 0
 
         filename = f"history_export_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         filepath = os.path.join(config.DATA_DIR, filename)
 
         with open(filepath, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["timestamp", "query", "intent"])
+            writer.writerow(["timestamp", "query", "intent", "confidence"])
             for e in reversed(entries):  # oldest first in the exported file
-                writer.writerow([e["timestamp"], e["query"], e["intent"]])
+                conf = e.get("confidence")
+                writer.writerow([e["timestamp"], e["query"], e["intent"],
+                                 "" if conf is None else f"{conf:.2f}"])
+        return filepath, len(entries)
 
-        self.voice.speak(f"Exported {len(entries)} commands to {filename} "
-                          f"in your data folder.")
+    def export(self, user_id=0):
+        filepath, count = self.write_csv(user_id)
+        if filepath is None:
+            self.voice.speak("There's no history to export yet.")
+            return None
+        self.voice.speak(f"Exported {count} commands to {os.path.basename(filepath)} "
+                         f"in your data folder.")
         return filepath

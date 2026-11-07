@@ -1,6 +1,6 @@
 """
 config.py
-All constants, paths, and settings for the J assistant live here.
+All constants, paths, and settings for the Raju assistant live here.
 Change things here instead of digging through the rest of the code.
 """
 
@@ -13,6 +13,7 @@ DB_PATH = os.path.join(DATA_DIR, "memory.db")
 MUSIC_DIR = os.path.join(DATA_DIR, "music")
 SCREENSHOT_DIR = os.path.join(DATA_DIR, "screenshots")
 LOG_PATH = os.path.join(DATA_DIR, "assistant.log")
+TRAINING_DATA_PATH = os.path.join(BASE_DIR, "training_data.json")
 
 # Make sure the data folders exist
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -47,21 +48,52 @@ WEBSITES = {
 }
 
 # ---------------- SAFETY ----------------
-# Only these shell commands are allowed to be "taught" via learn-mode.
-# Anything else gets rejected even if the user tries to teach it.
-COMMAND_WHITELIST_PREFIXES = ("start ", "explorer ", "notepad", "calc", "mspaint")
+# Only commands that are VALUES in APPS (above) may ever be run. This also
+# covers learned commands that come back from the database.
+# These two apps need their own console window when started on Windows.
+CONSOLE_APPS = ("cmd", "powershell")
+
+# ---------------- LOGGING ----------------
+LOG_MAX_BYTES = 500_000   # rotate the log file after about 0.5 MB
+LOG_BACKUP_COUNT = 3      # keep this many old log files
 
 # ---------------- MICROPHONE ----------------
-# Run mic_test.py / mic_device_test.py if audio stops being picked up
+# Run `python tools/mic_test.py --all` if audio stops being picked up
 # correctly (e.g. after plugging in a headset) to find the right index.
 # None = use the system default device.
 MIC_DEVICE_INDEX = 1
 
+# ---------------- SPEECH TO TEXT ----------------
+# Which recognizer turns audio into text. Only "google" exists today (it needs
+# internet). The name is kept here so an offline engine (Vosk, faster-whisper)
+# can be added later without touching the rest of the code.
+STT_ENGINE = "google"
+STT_LANGUAGE = "en-in"
+LISTEN_TIMEOUT = 5        # seconds to wait for someone to start speaking (wake word listening)
+ANSWER_TIMEOUT = 10       # more time when Raju asked a question and waits for the answer
+SHOW_HEARD = True         # console mode: print "Heard: ..." for everything the mic understood
+SHOW_SPOKEN_PIN = False   # True shows spoken PINs too (only for testing; PINs are hidden by default)
+FOLLOW_UP_SECONDS = 10    # after a reply, new commands need NO wake word for this long (0 = off)
+PHRASE_TIME_LIMIT = 8     # longest single phrase, in seconds
+AMBIENT_SECONDS = 0.5     # noise calibration time (done once, not every listen)
+
+# ---------------- TEXT TO SPEECH ----------------
+TTS_TIMEOUT = 60          # a speak() call never blocks longer than this
+
+# ---------------- PROFILES AND PINS ----------------
+PIN_MIN_LENGTH = 4
+PIN_MAX_ATTEMPTS = 3          # wrong PINs in a row before login is locked
+PIN_LOCK_SECONDS = 60
+PIN_HASH_ITERATIONS = 200_000  # PBKDF2 work factor; slow on purpose
+
+# ---------------- REMINDERS ----------------
+REMINDER_CHECK_SECONDS = 5    # how often the background thread looks for due reminders
+
 # ---------------- WAKE WORD ----------------
 # Primary phrase, plus common ways Google's speech recognizer actually
-# transcribes it (short phrases like "hey j" often get misheard as a
-# real word like "AJ" — listing aliases fixes that without needing a
-# different wake phrase).
+# transcribes it (short phrases are often misheard as a
+# real word, for example "raju" as "raj" — listing aliases fixes that without
+# needing a different wake phrase).
 WAKE_WORD = "raju"
 WAKE_WORD_ALIASES = ["raju", "raj"]
 
@@ -78,7 +110,15 @@ SENTIMENT_NEGATIVE_THRESHOLD = -0.4
 SENTIMENT_POSITIVE_THRESHOLD = 0.5
 
 # ---------------- ML ----------------
-CONFIDENCE_THRESHOLD = 0.28  # below this, assistant asks for clarification instead of guessing
+# Which model answers commands. Options: "naive_bayes", "logreg", "linear_svc".
+# Choose by cross-validation: run `python intent_classifier.py` and read the table.
+MODEL_NAME = "logreg"
+# Below this confidence the assistant says it did not understand instead of guessing.
+# Tuned on cross-validated predictions by `python intent_classifier.py`.
+CONFIDENCE_THRESHOLD = 0.12
+CV_FOLDS = 5          # stratified folds for the model comparison
+CV_REPEATS = 5        # repeat with different shuffles so one lucky split cannot decide
+RANDOM_SEED = 42
 
 # ---------------- MISC ----------------
 ASSISTANT_NAME = "Raju"

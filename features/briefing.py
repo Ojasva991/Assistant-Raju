@@ -1,6 +1,6 @@
 """
 features/briefing.py
-"Good morning" -> a spoken summary of the day: date, pending to-dos,
+"Good morning" (or any briefing phrase) -> a spoken summary of the day: date, pending to-dos,
 today's reminders, and the most recent note. Pulls together data
 that already exists across the other features into one useful readout.
 """
@@ -8,15 +8,26 @@ that already exists across the other features into one useful readout.
 import datetime
 
 
+def greeting_for(hour: int) -> str:
+    """Greeting by time of day: 5-11 morning, 12-16 afternoon, otherwise evening."""
+    if 5 <= hour < 12:
+        return "Good morning"
+    if 12 <= hour < 17:
+        return "Good afternoon"
+    return "Good evening"
+
+
 class BriefingFeature:
     def __init__(self, memory, voice):
         self.memory = memory
         self.voice = voice
 
-    def give_briefing(self, user_id=0, user_name=None):
+    def give_briefing(self, user_id=0, user_name=None, now=None):
+        """now is only for tests (a fixed time)."""
+        now = now or datetime.datetime.now()
         who = f", {user_name}" if user_name else ""
-        today_str = datetime.datetime.now().strftime("%A, %d %B %Y")
-        self.voice.speak(f"Good morning{who}. Today is {today_str}.")
+        today_str = now.strftime("%A, %d %B %Y")
+        self.voice.speak(f"{greeting_for(now.hour)}{who}. Today is {today_str}.")
 
         self._report_todos(user_id)
         self._report_reminders(user_id)
@@ -44,7 +55,7 @@ class BriefingFeature:
         for r in reminders:
             time_str = r["remind_at"][11:16]  # 'YYYY-MM-DDTHH:MM:SS' -> 'HH:MM'
             status = "already handled" if r["done"] else f"at {time_str}"
-            self.voice.speak(f"- {r['task']}, {status}")
+            self.voice.speak(f"{r['task']}, {status}")
 
     def _report_latest_note(self, user_id):
         note = self.memory.get_latest_note(user_id=user_id)

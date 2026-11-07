@@ -1,133 +1,144 @@
-# Raju — Offline Voice Assistant
+# Raju: voice assistant for Windows
 
-A voice assistant built as a school project (AI & ML, B.Tech), evolved
-from a single-file script into a modular Python application with a
-local SQLite database, a scikit-learn intent classifier, and a
-Tkinter GUI. **No external AI API is used anywhere** — the "AI" is a
-Naive Bayes intent classifier trained on-device from a small labeled
-dataset (see `intent_classifier.py`), and every feature (memory,
-sentiment, fuzzy matching, semantic search) runs locally.
+A personal AI/ML project. Raju is a system-specific assistant for one Windows PC, in the style of
+the movie assistants: you say the wake word ("raju"), then a command. He works out what you mean,
+does it, and answers by voice and on screen. Typing a command works too.
+
+**Raju is a hybrid assistant, not an offline-only one.** The core (intent model, memory, to-do,
+reminders, calculator, app control) runs on your PC without internet. Speech recognition currently
+uses Google's web service, so speaking commands needs internet. Offline speech and Hindi + English
+support are planned, see `docs/ROADMAP.md`.
+
+## What works offline and what needs internet
+
+| Works without internet | Needs internet |
+|---|---|
+| Intent model (scikit-learn, trained on your PC at start) | Speech recognition (Google's free web API) |
+| Memory: notes, to-do list, reminders, history (SQLite) | Wikipedia answers ("who is ...") |
+| Calculator, time, date, daily briefing | Opening websites (the browser needs it) |
+| Opening apps, screenshots, clipboard, battery/CPU/RAM | |
+| Text to speech (Windows voices, via pyttsx3) | |
+| Fuzzy matching, sentiment (VADER), profiles and PINs | |
+
+Without internet, speaking commands does not work, but typing them in the window does, and
+every offline feature keeps working. Online features say so politely when they fail.
+Offline speech recognition (Vosk or faster-whisper) is a planned upgrade; the engine name is
+kept in `config.STT_ENGINE`.
 
 ## Features
 
-- **Wake word activation** — ignores speech until it hears "raju" or
-  "raj", so the mic can stay on without reacting to background noise
-- **Fuzzy mishearing recovery** — corrects mic mistranscriptions
-  (e.g. "opne notepad") using `difflib`, no ML needed
-- **App & website launcher** — "open notepad", "open youtube", etc.
-- **To-do list & reminders** — voice-driven, with a background thread
-  that speaks reminders when they're due
-- **Voice calculator** — "what is fifteen plus twenty"
-- **System stats, screenshots, clipboard reading**
-- **Wikipedia lookups** with an offline fallback knowledge base
-- **Memory** — SQLite-backed notes, with topic-relevant recall
-  ("what did I say about my exam") via TF-IDF or, optionally, offline
-  sentence embeddings
-- **User profiles** — multiple people can share one installation with
-  separate memory, switched via a spoken PIN
-- **Daily briefing** — "good morning" reads back today's date, tasks,
-  reminders, and latest note
-- **Sentiment-aware responses** — recognizes frustrated phrasing
-  (via VADER, a lexicon-based scorer) and responds more gently
-- **System tray icon** — closing the GUI window minimizes to the
-  tray instead of quitting, so Raju keeps running (and keeps
-  listening, if continuous mode is on) in the background
-- **Command history** — every command is logged with a timestamp;
-  say "show my history" for a spoken summary, or "export my history"
-  for a CSV file you can open in Excel
-- **Safety** — learned voice commands can only resolve to a
-  pre-approved app whitelist, with a spoken yes/no confirmation
-  before running anything
-- **GUI mode** — a Tkinter window with a mic button, text input,
-  live transcript, and continuous-listening mode, for demos
+- Wake word "raju" (also "raj"), then a short window where no wake word is needed
+- Open apps and websites, with fuzzy matching for mishearings ("opne notepad")
+- To-do list and reminders ("remind me in ten minutes"), shown on their own pages
+- Calculator ("what is fifteen plus twenty", "two plus three times four")
+- Notes with topic recall ("what did I say about my exam")
+- Profiles with a spoken PIN (separate notes, tasks, reminders, history)
+- Daily briefing, command history with CSV export
+- Battery, CPU and RAM, screenshots, clipboard
+- Wikipedia lookups with a small offline fallback
+- A PySide6 window: chat, Tasks, Reminders, History, Settings, light and dark theme, tray icon
 
-See `CHANGELOG.md` for the full build history and design decisions
-behind each feature (useful if you're writing this up for a report).
-
-## Project structure
-
-```
-J_assistant/
-├── main.py                    # entry point (console mode)
-├── gui.py                     # entry point (GUI mode)
-├── assistant.py                # Raju's main class, wires everything together
-├── config.py                    # apps, wake word, thresholds, paths — edit here first
-├── database.py                   # SQLite memory layer (notes, todos, reminders, users, prefs)
-├── intent_classifier.py           # Naive Bayes intent classifier + training data
-├── fuzzy_match.py                  # mishearing recovery (stdlib difflib, no dependency)
-├── speech_engine.py                 # text-to-speech (pyttsx3)
-├── listener.py                       # speech-to-text + typed-input fallback
-├── mic_test.py                        # diagnostic: lists mics, tests the default device
-├── mic_device_test.py                  # diagnostic: tests specific mic device indices
-├── requirements.txt
-├── features/
-│   ├── todo.py                    # to-do list
-│   ├── reminders.py                # reminders + background checker thread
-│   ├── calculator.py                # spoken math
-│   ├── system_utils.py               # battery/RAM/CPU stats, screenshot, clipboard
-│   ├── knowledge.py                   # Wikipedia + offline fallback
-│   ├── user_profile.py                 # profile registration + fuzzy PIN login
-│   ├── semantic_memory.py               # topic-relevant note search
-│   ├── briefing.py                       # daily briefing summary
-│   ├── sentiment.py                       # VADER-based sentiment detection
-│   └── history.py                          # command history log + CSV export
-└── data/                       # created automatically at runtime
-    ├── memory.db                # SQLite database
-    ├── music/                    # drop mp3/wav files here for "play music"
-    └── screenshots/
-```
-
-## Setup
+## Setup (Windows, Python 3.10+)
 
 ```
 python -m venv .venv
-.venv\Scripts\activate        # Windows; use `source .venv/bin/activate` on Mac/Linux
+.venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Run it:
+If `pip install pyaudio` fails, install a PyAudio wheel for your Python version first.
+
+## Run
+
 ```
-python main.py          # console mode
-python main.py --text   # console mode, typed input instead of mic
-python gui.py           # GUI mode
+python gui.py            the window (main way to use Raju)
+python main.py           console mode (voice)
+python main.py --text    console mode, typed commands
 ```
 
-If audio stops working correctly (e.g. after plugging in a headset),
-run `python mic_test.py` to find the right microphone device index
-and update `MIC_DEVICE_INDEX` in `config.py`.
+Keyboard in the window: Ctrl+M listen, Ctrl+L text box, Ctrl+1 to Ctrl+5 switch pages.
+Closing the window hides Raju to the tray. Use Quit in the tray menu (or say "exit") to stop.
+
+## Check that it works
+
+```
+python -m pytest tests -q                 automatic tests (no microphone needed)
+python tools\smoke_test.py                quick health check, about 5 seconds
+python tools\smoke_test.py --all          also speakers, microphone, real apps, internet
+python tools\mic_test.py --all            test every microphone and name the right index
+```
+
+Install the test tool first: `pip install -r requirements-dev.txt`.
+If the wrong microphone is used, set `MIC_DEVICE_INDEX` in `config.py`, or choose the device on
+the Settings page.
 
 ## Example commands
 
-Say the wake word first, e.g. "raju, open notepad":
-
 ```
-raju open notepad / open youtube
-raju what is the time / what is the date
-raju add a task            → then say the task
-raju show my tasks
-raju remind me in ten minutes   → then say what, then when
-raju remember this          → then say what to remember
-raju what did I say about my exam    → topic-relevant recall
-raju what is fifteen plus twenty
-raju how much battery do I have
-raju take a screenshot
-raju who is albert einstein
-raju create a profile / log in / who am i / log out
-raju good morning              → daily briefing
-raju show my command history
-raju export my history         → saves a CSV to data/
+raju open notepad              raju what time is it
+raju go to youtube             raju what is the date
+raju add a task                raju show my tasks
+raju remind me in ten minutes  raju what is twelve plus seven
+raju remember this             raju what did I say about my exam
+raju take a screenshot         raju how much battery do I have
+raju who is albert einstein    raju good morning
+raju create a profile          raju log in / log out / who am I
+raju show my history           raju export my history
 ```
 
-## Notes for your machine
+## Folder map
 
-- `config.APPS` and the music-playback code (`os.startfile`) are
-  Windows-specific — update `config.py` if you move to Mac/Linux.
-- `sentence-transformers` is optional (commented out in
-  `requirements.txt`) — upgrades memory recall from keyword-based to
-  true meaning-based search. Everything works without it.
+```
+gui.py                 launcher for the window
+main.py                console mode
+assistant.py           the brain: Assistant.execute(query)
+config.py              apps, websites, wake word, thresholds, paths
+intent_classifier.py   rules + ML model; run it to see the accuracy table
+training_data.json     446 example sentences, 27 intents
+database.py            SQLite layer (data/memory.db)
+fuzzy_match.py         difflib helpers
+speech_engine.py       text to speech (worker thread + queue)
+listener.py            speech to text
+timeutil.py            time formatting
+features/              one small module per feature (todo, reminders, calculator, ...)
+ui/                    PySide6 window: theme, bridge, widgets, pages, main_window, prefs
+tools/                 mic_test.py, smoke_test.py, ui_screenshot.py
+docs/                  ROADMAP.md, demo script, report and slides outlines
+tests/                 pytest tests
+data/                  runtime data (database, log, music, screenshots)
+```
 
-## Disclaimer
+## Accuracy of the intent model
 
-The user-profile PIN system is a convenience feature for separating
-memory between people sharing one installation, **not real security**
-— PINs are stored as plain text.
+Measured with 5-fold cross-validation repeated 5 times on `training_data.json`:
+Naive Bayes 73.6%, Logistic Regression 82.6% (chosen), LinearSVC 82.3%.
+With the rule table and the confidence threshold: 83.6%. The old version scored about 61%
+on its own, smaller data. See `CHANGELOG.md` for the details and the limits of this comparison.
+
+## Safety and privacy notes
+
+- Apps start with `subprocess.Popen` without a shell, and only commands listed in `config.APPS`
+  can run. This includes commands you teach Raju.
+- PINs are stored as salted PBKDF2 hashes and compared exactly. Three wrong tries lock login for
+  60 seconds (until Raju restarts). This separates profiles on a shared PC; it is not protection
+  for sensitive data.
+- Speech audio is sent to Google for recognition. Wikipedia lookups send your question to Wikipedia.
+- `data/assistant.log` keeps the commands you gave, in plain text. It is excluded from git; keep it private.
+
+## Known limits
+
+- English only for now. Hindi + English (Hinglish) is the next big step, see `docs/ROADMAP.md`.
+- Wake word is matched in the text that Google returns, so it is not an acoustic wake-word
+  detector and it needs internet.
+- Tested by the owner on one Windows 11 laptop (Intel i3, 8 GB RAM) with one microphone.
+  No tests with other speakers, accents or noisy rooms yet.
+- About 37% of unusual, unrelated sentences are still mapped to some action instead of "unknown".
+- App commands in `config.APPS` and the music helper are Windows-oriented.
+
+## Roadmap
+
+The plan for the next phases (English polish, Hindi + English, offline speech, optional local LLM,
+measurements for a paper) is in `docs/ROADMAP.md`. Demo and report material is in `docs/`.
+
+`sentence-transformers` is optional (commented out in `requirements.txt`) and upgrades note
+recall from keyword search to meaning-based search.

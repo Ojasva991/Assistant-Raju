@@ -6,10 +6,8 @@ scikit-learn
 psutil
 pyautogui
 pyperclip
-word2number
 vaderSentiment
-pystray
-Pillow
+PySide6-Essentials
 
 # Optional: enables true meaning-based memory recall instead of
 # keyword matching. Everything works fine without it (falls back

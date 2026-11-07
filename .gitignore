@@ -5,6 +5,7 @@ venv/
 # Python
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # Personal data - don't commit your own notes/todos/PINs/screenshots
 data/memory.db
@@ -16,7 +17,20 @@ data/music/*
 # IDE
 .idea/
 .vscode/
-.pytest_cache/
+
+# Log file holds your spoken commands, keep it private
 data/*.log
+data/*.log.*
+
+# History exports made by "export my history"
 data/*.csv
-data/screenshots/*.png
+
+# UI screenshots made by tools/ui_screenshot.py
+data/screenshots_ui/
+
+# Downloaded models (big, get them with tools/get_models.py later)
+models/
+
+# Raw voice recordings are private; never commit them
+data/recordings/
+*.wav
